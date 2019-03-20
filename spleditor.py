@@ -22,15 +22,14 @@ TEMP_IMAGE_DEATH = "death_image.png"
 TEMP_IMAGE_WIN = "win_image.png"
 
 # テスト用の変数を用意
-TESTV0 = "../Segment_0001.mp4"
+TESTV0 = "Segment_0001.mp4"
 
 
 def test_timer(loop=1):
     start = datetime.datetime.now()
     for i in range(loop):
         a = check_frames_of_video(TESTV0)
-        for i in a:
-            ffmpeg_segment(TESTV0, i[0] - 1, i[1] + 1)
+        print(a)
 
     end = datetime.datetime.now()
     print("start:", start.strftime("%Y%m%d%H%M%S"), ", end:",
@@ -56,6 +55,8 @@ def check_frames_of_video(video, check_interval_seconds=1):
     frame_rate = cap.get(CV_CAP_PROP_FPS)
 
     flame_count = max_flame - 1
+
+    # 初期値
     black_point_sec = []
     kill_point_sec = []
     death_point_sec = []
@@ -71,44 +72,41 @@ def check_frames_of_video(video, check_interval_seconds=1):
         if check is not False:
             black_point_sec.append(check)
 
+        # kill画面かチェックする
         check_kill = _image_match_check(frame, TEMP_IMAGE_KILL, flame_count,
                                         frame_rate, height=[660, 695],
                                         width=[500, 785])
-
-        # kill画面かチェックする
         if check_kill is not False:
             kill_point_sec.append(check_kill)
 
+        # death画面かチェックする
         check_death = _image_match_check(frame, TEMP_IMAGE_DEATH, flame_count,
                                          frame_rate, height=[640, 680],
                                          width=[1000, 1280])
-
-        # death画面かチェックする
         if check_death is not False:
             death_point_sec.append(check_death)
 
+        # 勝利画面かチェックする
         check_win = _image_match_check(frame, TEMP_IMAGE_WIN, flame_count,
                                        frame_rate, height=[0, 100],
                                        width=[0, 190])
-
-        # 勝利画面かチェックする
         if check_win is not False:
             win_point_sec.append(check_win)
 
+        # フレーム数を移動
         flame_count = flame_count - \
-            (check_interval_seconds * frame_rate)  # フレーム数を移動
+            (check_interval_seconds * frame_rate)
 
+    # ゲームの時間の抽出重複を削除
     black_point_sec = _game_cut_point(black_point_sec,
-                                      check_interval_seconds)   # 重複を削除
-
+                                      check_interval_seconds)
+    # 各ポイントの重複、連続を削除
     kill_point_sec = _cut_point(kill_point_sec,
-                                check_interval_seconds)   # 重複を削除
-
+                                check_interval_seconds)
     death_point_sec = _cut_point(death_point_sec,
-                                 check_interval_seconds)   # 重複を削除
-
+                                 check_interval_seconds)
     win_point_sec = _cut_point(win_point_sec,
-                               check_interval_seconds)   # 重複を削除
+                               check_interval_seconds)
 
     return [black_point_sec, kill_point_sec, death_point_sec, win_point_sec]
 
@@ -194,9 +192,9 @@ def _game_cut_point(input_list, CHECK_INTERVAL, time_range=180):
 
 
 # ffmpegを呼び出し指定した秒数の動画を切り出す。output_fileは開始秒数_終了時間秒数が追記される。
-def ffmpeg_segment(video, start=0, end=10):
+def ffmpeg_segment(video, start=0, end=10, preword="segment"):
     time_range = end - start
-    output_video = video.replace(".mp4",
+    output_video = video.replace(".mp4", "_" + preword +
                                  "_" + str(start) + "_" + str(end) + ".mp4")
     command = ["ffmpeg", "-y", "-ss", str(start), "-i", video,
                "-t", str(time_range), "-vcodec", "copy", "-acodec", "copy",
@@ -205,6 +203,54 @@ def ffmpeg_segment(video, start=0, end=10):
     return data
 
 
-a = check_frames_of_video(TESTV0)
-print(a)
-#a = [[[42, 389], [613, 969]], [81, 163, 206, 241, 258, 287, 345, 463, 477, 541, 646, 673, 711, 728, 801], [105, 182, 208, 243, 269, 294, 313, 336, 467, 503, 521, 545, 655, 687, 773, 839, 891], [0, 364]]
+def win_check(a):
+    gamein_time = a[0]
+    kill_time = a[1]
+    death_time = a[2]
+    win_time = a[3]
+
+    result = []
+    for i in gamein_time:
+        kill_lsit = []
+        for j in kill_time:
+            if i[0] < j and j < i[1]:
+                kill_lsit.append(j)
+
+        death_lsit = []
+        for j in death_time:
+            if i[0] < j and j < i[1]:
+                death_lsit.append(j)
+
+        win_lsit = []
+        for j in win_time:
+            if i[0] < j and j < i[1]:
+                win_lsit.append(j)
+
+        i = [i]
+        i.append(kill_lsit)
+        i.append(death_lsit)
+        i.append(win_lsit)
+        result.append(i)
+
+    return result
+
+
+def main():
+    input_video = TESTV0
+    a = check_frames_of_video(input_video)
+    b = win_check(a)
+
+    for i in b:
+        if len(i[3]) == 1:
+            gaming_time = i[0]
+            kill_time = i[1]
+            death_time = i[2]
+            ffmpeg_segment(input_video, gaming_time[0], gaming_time[1], "yt")
+            for j in kill_time:
+                ffmpeg_segment(input_video, j - 2, j + 2, "kill")
+
+            for j in death_time:
+                ffmpeg_segment(input_video, j - 3, j + 1, "death")
+
+
+main()
